@@ -22,6 +22,8 @@ state = config["Preferences"]["state"]
 refresh_rate = config["Preferences"].getint("refresh_rate")
 refresh_variance = config["Preferences"].getint("refresh_variance")
 found_delay = config["Preferences"].getint("found_delay")
+ignore_list = json.loads(config["Preferences"]["ignore_list"])
+ignore_list = {i.casefold() for i in ignore_list}
 
 
 def send_email(message, receivers=addresses_to_notify):
@@ -51,6 +53,7 @@ An error occurred. If this is related to the page failing to load, you may want 
 
 def send_report(locations, city_counter):
     num_cities = len(locations)
+    cities = "\n".join(locations)
     message = f"""\
 Subject: {num_cities}/{city_counter} CVS locations have vaccine appointments
 
@@ -63,9 +66,8 @@ For more information see:
 https://github.com/bodiya/vax-notifier#information-for-receivers
 
 Appointments available at:
+{cities}
 """
-    for location in locations:
-        message += "\t".join([location["city"], location["status"]]) + "\n"
 
     send_email(message)
 
@@ -104,17 +106,21 @@ def getVaxAppt(cvsUrl):
             city_count = len(all_statuses)
             print("Found %i cities" % city_count)
             matches = []
+            filtered_matches = []
             for status in all_statuses:
                 city = status.parent.parent.find("span", {"class": "city"})
                 if no_availability_text == status.text:
                     # When experimenting, it's sometimes nice to match a lot
-                    # matches.append({"city": city.text, "status": status.text})
+                    # matches.append(city.text)
                     pass
                 else:
                     print("%s found in %s" % (status.text, city.text))
-                    matches.append({"city": city.text, "status": status.text})
+                    matches.append(city.text)
 
-            if len(matches) > 0:
+            filtered_matches = {m.casefold() for m in matches} - ignore_list
+            if len(filtered_matches) > 0:
+                # note: entries in the ignore list will be included if there
+                #       are also other cities with availability
                 send_report(matches, city_count)
                 time.sleep(found_delay)  # wait a while before looking again
             else:
