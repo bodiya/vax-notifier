@@ -3,11 +3,14 @@ import configparser
 import json
 from random import randrange
 from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as ec
 import smtplib
 import ssl
 import time
 
-config_file = "vax-notifier.conf"
+config_file = "config/vax-notifier.conf"
 config = configparser.ConfigParser()
 config.read(config_file)
 
@@ -19,11 +22,13 @@ addresses_to_notify = json.loads(config["Receivers"]["list"])
 admin_email = config["Receivers"]["admin_email"]
 
 state = config["Preferences"]["state"]
+scheduled_mode = config["Preferences"].getboolean("scheduled_mode")
 refresh_rate = config["Preferences"].getint("refresh_rate")
 refresh_variance = config["Preferences"].getint("refresh_variance")
 found_delay = config["Preferences"].getint("found_delay")
 ignore_list = json.loads(config["Preferences"]["ignore_list"])
 ignore_list = {i.casefold() for i in ignore_list}
+chrome_arguments = json.loads(config["Preferences"]["chrome_arguments"])
 
 
 def send_email(message, receivers=addresses_to_notify):
@@ -79,22 +84,32 @@ def delay():
 
 
 def getVaxAppt(cvsUrl):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36",
-    }
+    chrome_options = webdriver.ChromeOptions()
 
-    driver = webdriver.Chrome()
-    driver.get(cvsUrl)
+    # don't load images
+    chrome_options.add_experimental_option(
+        "prefs", {"profile.default_content_settings.images": 2}
+    )
+    chrome_options.add_experimental_option(
+        "prefs", {"profile.managed_default_content_settings.images": 2}
+    )
+
+    # load any other chrome options
+    for arg in chrome_arguments:
+        chrome_options.add_argument(arg)
+
+    driver = webdriver.Chrome(options=chrome_options)
 
     while True:
         try:
-            driver.refresh()
+            driver.get(cvsUrl)
             print("refreshed")
-            state_element = driver.find_element_by_link_text(state)
+            state_element = WebDriverWait(driver, 10).until(
+                ec.presence_of_element_located((By.LINK_TEXT, state))
+            )
             state_element.click()
             html = driver.page_source
             soup = bs4.BeautifulSoup(html, "html.parser")
-            time.sleep(4)
         except Exception as ex:
             send_error(str(ex))
             delay()
@@ -122,13 +137,21 @@ def getVaxAppt(cvsUrl):
                 # note: entries in the ignore list will be included if there
                 #       are also other cities with availability
                 send_report(matches, city_count)
-                time.sleep(found_delay)  # wait a while before looking again
+                if scheduled_mode:
+                    exit(0)
+                else:
+                    time.sleep(found_delay)  # wait a while before looking again
             else:
                 print("No appointments available in " + state)
         except Exception as ex:
             send_error(str(ex))
 
-        delay()
+        # if running in a container on the public cloud,
+        # sleeping can be expensive
+        if scheduled_mode:
+            exit(1)
+        else:
+            delay()
 
 
 getVaxAppt("https://www.cvs.com/immunizations/covid-19-vaccine")
