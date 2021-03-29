@@ -1,6 +1,7 @@
 import bs4
 import configparser
 import json
+from os import environ
 from random import randrange
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -14,27 +15,28 @@ config_file = "config/vax-notifier.conf"
 config = configparser.ConfigParser()
 config.read(config_file)
 
-sender_email = config["Sender"]["email"]
-app_password = config["Sender"]["app_password"]
-smtp_server = config["Sender"]["smtp_server"]
+sender_email = config.get("Sender", "email", vars=environ)
+app_password = config.get("Sender", "app_password", vars=environ)
+smtp_server = config.get("Sender", "smtp_server", vars=environ)
 
-addresses_to_notify = json.loads(config["Receivers"]["list"])
-admin_email = config["Receivers"]["admin_email"]
+addresses_to_notify = json.loads(config.get("Receivers", "receivers_list", vars=environ))
+admin_email = config.get("Receivers", "admin_email", vars=environ)
 
-state = config["Preferences"]["state"]
-scheduled_mode = config["Preferences"].getboolean("scheduled_mode")
-refresh_rate = config["Preferences"].getint("refresh_rate")
-refresh_variance = config["Preferences"].getint("refresh_variance")
-found_delay = config["Preferences"].getint("found_delay")
-ignore_list = json.loads(config["Preferences"]["ignore_list"])
+state = config.get("Preferences", "state", vars=environ)
+scheduled_mode = config.getboolean("Preferences", "scheduled_mode", vars=environ)
+refresh_rate = config.getint("Preferences", "refresh_rate", vars=environ)
+refresh_variance = config.getint("Preferences", "refresh_variance", vars=environ)
+found_delay = config.getint("Preferences", "found_delay", vars=environ)
+ignore_list = json.loads(config.get("Preferences", "ignore_list", vars=environ))
 ignore_list = {i.casefold() for i in ignore_list}
-chrome_arguments = json.loads(config["Preferences"]["chrome_arguments"])
+chrome_arguments = json.loads(config.get("Preferences", "chrome_arguments", vars=environ))
+connectivity_test = config.getboolean("Preferences", "connectivity_test", vars=environ, fallback=False)
 
 
 def send_email(message, receivers=addresses_to_notify):
     # reload notification list, so restarts aren't required when you add people
     config.read(config_file)
-    addresses_to_notify = json.loads(config["Receivers"]["list"])
+    addresses_to_notify = json.loads(config.get("Receivers", "receivers_list", vars=environ))
 
     port = 587
     context = ssl.create_default_context()
@@ -126,8 +128,8 @@ def getVaxAppt(cvsUrl):
                 city = status.parent.parent.find("span", {"class": "city"})
                 if no_availability_text == status.text:
                     # When experimenting, it's sometimes nice to match a lot
-                    # matches.append(city.text)
-                    pass
+                    if connectivity_test:
+                        matches.append(city.text)
                 else:
                     print("%s found in %s" % (status.text, city.text))
                     matches.append(city.text)
