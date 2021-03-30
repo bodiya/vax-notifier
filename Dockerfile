@@ -18,7 +18,7 @@ COPY requirements.txt /app/
 RUN cd /app \
   && pip install --upgrade pip \
   && pip install -r requirements.txt
-COPY *.py /app/
+COPY / /app/
 
 WORKDIR /app
 ENTRYPOINT ["/usr/local/bin/python"]
