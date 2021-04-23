@@ -5,6 +5,7 @@ from os import environ
 from random import randrange
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 import smtplib
@@ -106,10 +107,13 @@ def getVaxAppt(cvsUrl):
         try:
             driver.get(cvsUrl)
             print("refreshed")
-            state_element = WebDriverWait(driver, 10).until(
-                ec.presence_of_element_located((By.LINK_TEXT, state))
+            state_selector = WebDriverWait(driver, 10).until(
+                ec.presence_of_element_located((By.ID, "selectstate"))
             )
-            state_element.click()
+            Select(state_selector).select_by_visible_text(state)
+
+            submit_button = driver.find_element_by_xpath('//button[normalize-space()="Get started"]')
+            submit_button.click()
             html = driver.page_source
             soup = bs4.BeautifulSoup(html, "html.parser")
         except Exception as ex:
